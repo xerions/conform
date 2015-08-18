@@ -207,28 +207,72 @@ defmodule Conform.Translate do
                     end
                 end
               _ ->
-                {complex_data_type, complex_type_name |> String.to_atom,
-                 Enum.map(mapping, fn {complex_key, complex_mappings} ->
-                   field         = String.split(Atom.to_string(complex_key), "*.")
-                                   |> List.last
-                                   |> String.to_atom
-                   datatype      = Keyword.get(complex_mappings, :datatype, :binary)
-                   default_value = Keyword.get(complex_mappings, :default, nil)
+                 data = Enum.map(mapping, fn {complex_key, complex_mappings} ->
+                    field         = String.split(Atom.to_string(complex_key), "*.")
+                                    |> List.last
+                                    |> String.to_atom
+                    datatype      = Keyword.get(complex_mappings, :datatype, :binary)
+                    default_value = Keyword.get(complex_mappings, :default, nil)
 
-                   case get_in_complex(complex_type_name, normalized_conf, [complex_key]) do
-                     []         -> {field, default_value}
-                     conf_value ->
+                    case get_in_complex(complex_type_name, normalized_conf, [complex_key]) do
+                      []         -> {field, default_value}
+                      conf_value ->
                       case parse_datatype(datatype, conf_value, complex_key) do
                         nil -> {field, conf_value}
                         val -> {field, val}
                       end
-                   end
-                 end)}
+                    end
+                 end)
+                {complex_data_type, complex_type_name |> String.to_atom, data}
               end
           end
       end) |> List.flatten
+      data = Enum.reduce(data, result, fn {app_key, wildcard, children}, result when is_list(children) ->
+        app_path = (String.split(app_key, ".") |> Enum.map(&String.to_atom/1)) ++ [wildcard]
+        children = Enum.reduce(children, result, fn {key, value}, acc ->
+          path = String.split(Atom.to_string(key), ".")
+          [parent_key|child_key] = path_key = app_path ++ Enum.map(path, &String.to_atom/1)
+          # Check if the parent even exists, if it does and is a list, we'll put the child inside as a {key, value} tuple.
+          # If the parent does not exist, we'll add it and make it a keyword list value.
+          # If the parent does exist, but is not nil or a list, we'll skip attempting to nest this key, as it's likely the intent was
+          # to keep it as a separate setting.
 
-      update_complex_acc(mapping, result, translations, data)
+          # We have to make sure the entire path is present, so we reduce over the path adding children as we go
+          put_result = Enum.reduce(path_key, {[], acc, :next}, fn
+            # This is the parent key, just make sure it's a list
+            key_part, {[], acc2, :next} ->
+              current_path = [key_part]
+              case get_in(acc2, current_path) do
+                x when is_list(x) -> {current_path, acc2, :next}
+                nil               -> {current_path, put_in(acc2, current_path, []), :next}
+                _                 -> {current_path, acc2, :halt}
+              end
+            # This is a middle component of the path
+            key_part, {parents, acc2, :next} ->
+              current_path = [key_part|parents]
+              parent_path  = Enum.reverse(parents)
+              case get_in(acc2, Enum.reverse(current_path)) do
+                x when is_list(x) -> {current_path, acc2, :next}
+                nil               -> {current_path, put_in(acc2, Enum.reverse(current_path), []), :next}
+                _                 -> {current_path, acc2, :halt}
+              end
+            # We've hit a non-nil/list value, stop updating this key
+            key_part, {parents, acc2, :halt} ->
+              {parents, acc2, :halt}
+          end)
+
+          case put_result do
+           {_, res, :halt}    -> put_in(res, path_key, value)
+           {put_path, res, _} ->
+             put_in(res, path_key, value) |> Keyword.delete(key)
+          end
+        end)
+        Keyword.merge(result, children)
+      end) |> IO.inspect
+
+      data
+
+      update_complex_acc(mapping, [], translations, data)
     end)
 
     {mappings, complex}
@@ -236,14 +280,18 @@ defmodule Conform.Translate do
 
   defp update_complex_acc([], result, _, _), do: result
   defp update_complex_acc([{from_key, map} | mapping], result, translations, data) do
-    to_key            = String.to_atom(Keyword.get(map, :to) <> ".*")
-    [app_name, path]  = Keyword.get(map, :to) |> String.split(".") |> Enum.map(&String.to_atom/1)
+    to_key             = String.to_atom(Keyword.get(map, :to) <> ".*")
+    [app_name | path]  = Keyword.get(map, :to) |> String.split(".") |> Enum.map(&String.to_atom/1)
+    IO.inspect {:app, app_name, path, from_key, to_key, data, result}
     built = build_complex(mapping, translations, data, from_key, to_key)
             |> List.flatten
             |> Enum.sort_by(fn {k, _} -> k end)
     result = case result do
-      [] -> update_in!([], [app_name, path], built)
-      _  -> update_in!(result, [app_name, path], built)
+      [] ->
+        IO.inspect {app_name, path, built}
+        update_in!([], [app_name | path], built)
+      _  ->
+        update_in!(result, [app_name | path], built)
     end
     update_complex_acc(mapping, result, translations, data)
   end
@@ -256,7 +304,10 @@ defmodule Conform.Translate do
     end
   end
 
-  defp get_complex(complex, []), do: complex
+  defp get_complex(complex, []) do
+    # Sort by path length so that parent keys are created before children
+    complex |> Enum.sort_by(fn {k, _} -> byte_size("#{k}") end)
+  end
   defp get_complex(complex, [{key, _} = mapping | mappings]) do
     case Regex.run(~r/\.\*/, to_string(key)) do
       nil ->
@@ -305,6 +356,7 @@ defmodule Conform.Translate do
     case res do
       []         -> []
       [{_, val}] -> val
+      values when is_list(values) -> []
     end
   end
 
@@ -332,17 +384,20 @@ defmodule Conform.Translate do
   end
 
   defp build_complex(mapping, translations, data, from_key, to_key) do
-    Enum.map(data, fn {_, field_name, data} ->
+    Enum.map(data, fn {field_name, data} ->
+      map = Enum.reduce(data, %{}, fn
+        {k, v}, acc ->
+          case k do
+            ^from_key -> Map.put(acc, field_name, v)
+            ^to_key   -> Map.put(acc, field_name, v)
+            _         -> Map.put(acc, k, v)
+          end
+      end)
+      IO.inspect {:map, map}
+      IO.inspect {:from_key, from_key}
+      IO.inspect {:to_key, to_key}
       case get_in(translations, [to_key]) do
         fun when is_function(fun) ->
-          map = Enum.reduce(data, %{}, fn
-            {k, v}, acc ->
-              case k do
-                ^from_key -> Map.put(acc, field_name, v)
-                ^to_key   -> Map.put(acc, field_name, v)
-                _         -> Map.put(acc, k, v)
-              end
-          end)
           fun.(mapping, {field_name, map}, []) |> List.flatten
       end
     end)
