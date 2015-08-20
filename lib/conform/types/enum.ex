@@ -8,8 +8,9 @@ defmodule Conform.Types.Enum do
 
   def translate(mapping, val, _acc), do: check_enum(mapping, val)
 
-  def parse_datatype(_key, val) when is_list(val), do: {:ok, List.to_atom(val)}
-  def parse_datatype(_key, val),                   do: {:ok, val}
+  def parse_datatype(_key, val) when is_list(val),   do: {:ok, List.to_atom(val)}
+  def parse_datatype(_key, val) when is_binary(val), do: {:ok, String.to_atom(val)}
+  def parse_datatype(_key, val), do: {:error, "Cannot convert value to atom, unknown type: #{Macro.to_string(val)}"}
 
   defp check_enum(mapping, val) do
     valid_values = get_in(mapping, [:datatype, Conform.Types.Enum])

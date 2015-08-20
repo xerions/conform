@@ -1,6 +1,14 @@
 [
   mappings: [
-    "lager.handlers.console.level": [
+    "lager.handlers.*": [
+      to: "lager.handlers",
+      datatype: [:complex],
+      default: [],
+      doc: """
+      Settings for the available logging backends.
+      """
+    ],
+    "lager.handlers.*.level": [
       to: "lager.handlers",
       datatype: [enum: [:info, :error]],
       default: :info,
@@ -9,7 +17,7 @@
       """
     ],
     "lager.handlers.file.error": [
-      to: "lager.handlers",
+      to: "lager.handlers.file.error",
       datatype: :binary,
       default: "/var/log/error.log",
       doc: """
@@ -17,7 +25,7 @@
       """
     ],
     "lager.handlers.file.info": [
-      to: "lager.handlers",
+      to: "lager.handlers.file.info",
       datatype: :binary,
       default: "/var/log/console.log",
       doc: """
@@ -32,29 +40,29 @@
     ]
   ],
   translations: [
-    "lager.handlers.console.level": fn
-      _mapping, level, nil when level in [:info, :error] ->
-          [lager_console_backend: level]
-      _mapping, level, acc when level in [:info, :error] ->
-          acc ++ [lager_console_backend: level]
-      _mapping, level, _ ->
-        IO.puts("Unsupported console logging level: #{level}")
+    "lager.handlers.*": fn
+      _mapping, {:console, value_map}, handlers ->
+        level = case value_map[:level] do
+          nil -> :info
+          l when l in [:info, :error] -> l
+          invalid ->
+            IO.puts("Unsupported console logging level: #{invalid}")
+            exit(1)
+        end
+        [{:lager_console_backend, level} | handlers]
+      _mapping, {:file, settings}, handlers ->
+        [{:lager_file_backend, settings} | handlers]
+      _mapping, {type, type_definition}, handlers ->
+        IO.inspect {type, type_definition}
+        IO.puts("Unrecognized lager backend: #{type}")
         exit(1)
     end,
-    "lager.handlers.file.error": fn 
-      _mapping, path, nil ->
-        [lager_file_backend: [file: path, level: :error]]
-      _mapping, path, acc ->
-        acc ++ [lager_file_backend: [file: path, level: :error]]
-    end,
     "lager.handlers.file.info": fn
-      _mapping, path, nil ->
-        [lager_file_backend: [file: path, level: :info]]
-      _mapping, path, acc ->
-        acc ++ [lager_file_backend: [file: path, level: :info]]
-    end,
-    "myapp.some.important.setting": fn _mapping, val, _ ->
-      val
+      _mapping, {level, log_path}, acc when level in [:info, :error] and is_binary(log_path) ->
+        [[level: level, file: log_path]|acc]
+      _mapping, {level, log_path}, _ ->
+        IO.puts("Invalid log level for the lager file backend: #{level}")
+        exit(1)
     end
   ]
 ]

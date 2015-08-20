@@ -50,7 +50,7 @@ defmodule IntegrationTest do
                   some: [important: [setting: [
                     {"127.0.0.1", "80"}, {"127.0.0.2", "81"}
                   ]]]]]
-    assert Keyword.equal?(expected, effective)
+    assert effective == expected
   end
 
   test "for the complex data types" do
@@ -59,10 +59,10 @@ defmodule IntegrationTest do
     effective = Conform.Translate.to_config([], conf, schema)
     expected = [my_app:
                 [complex_another_list:
-                 [first: %{age: 20, username: "test_username1"},
-                  second: %{age: 40, username: "test_username2"}],
+                 [first: [age: 20, username: "test_username1"],
+                  second: [age: 40, username: "test_username2"]],
                  complex_list: [
-                   buzz: %{age: 25, type: :person}, fido: %{age: 30, type: :dog}],
+                   buzz: [age: 25, type: :person], fido: [type: :dog]],
                  some_val: :foo, some_val2: 2.5,
                  sublist: ["opt-2": "val2", opt1: "val1"]]]
 

@@ -140,7 +140,7 @@ defmodule ConfTranslateTest do
       ],
       sasl:  [errlog_type: :progress]
     ]
-    assert Keyword.equal?(expect, config)
+    assert config == expect
   end
 
   test "can write config to disk as Erlang terms in valid app/sys.config format" do

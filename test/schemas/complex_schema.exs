@@ -59,22 +59,16 @@
   ],
 
   translations: [
-    "my_app.complex_list.*": fn _, {key, value_map}, acc ->
-      [{key, %{
-        type: value_map[:type],
-        age:  value_map[:age]
-       }} | acc]
+    "complex_list.*": fn _, {key, value_map}, acc ->
+      [ {key, value_map} | acc ]
     end,
 
-    "my_app.complex_another_list.*": fn _, {key, value_map}, acc ->
-      [{key, %{
-        username: value_map[:username],
-        age: value_map[:age]
-       }} | acc]
+    "complex_another_list.*": fn _, {key, value_map}, acc ->
+      [ {key, value_map} | acc ]
     end,
 
-    "my_app.sublist.*": fn _, {key, value_map}, acc ->
-      [{key, value_map[key]}|acc]
+    "sublist_example.*": fn _, {key, value_map}, acc ->
+      [ {key, value_map} | acc ]
     end
   ]
 ]
