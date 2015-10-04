@@ -71,7 +71,6 @@ defmodule Conform.Translate do
               |> String.to_atom
         {key, value}
     end
-
     schema = Keyword.delete(schema, :import)
     case schema do
       [mappings: mappings, translations: translations] ->
@@ -84,17 +83,20 @@ defmodule Conform.Translate do
             datatype = Keyword.get(mapping, :datatype, :binary)
             # Get the default value for this mapping, if defined
             default_value = Keyword.get(mapping, :default, nil)
+            value = case get_in(normalized_conf, [key]) do
+                      nil -> default_value
+                      conf_value   -> conf_value
+                    end
             # parsed value returns the value with valid data type
-            parsed_value = case get_in(normalized_conf, [key]) do
-              nil        -> default_value
-              conf_value ->
-                case parse_datatype(datatype, conf_value, key) do
-                  nil ->
-                    conf_value
+            parsed_value =
+              try do
+                case parse_datatype(datatype, value, key) do
+                  nil -> value
                   val -> val
                 end
-            end
-
+              rescue ArgumentError ->
+                  value
+              end
             # Break the schema key name into it's parts, [app, [key1, key2, ...]]
             [app_name|setting_path] = Keyword.get(mapping, :to, key |> Atom.to_string)
                                       |> String.split(".")
@@ -436,22 +438,18 @@ defmodule Conform.Translate do
       raise TranslateErorr, message: "Invalid enum value for #{setting}."
     end
   end
-  defp parse_datatype([list: :ip], value, setting) do
-    "#{value}"
-    |> String.split(",")
-    |> Enum.map(&String.strip/1)
-    |> Enum.map(&(parse_datatype(:ip, &1, setting)))
+  defp parse_datatype([list: :ip], value, setting), do: str_to_conform_list(:ip, value, setting)
+  defp parse_datatype([list: list_type], value, setting)  when is_binary(value) do
+    str_to_conform_list(list_type, value, setting)
   end
   defp parse_datatype([list: list_type], value, setting) do
     case :io_lib.char_list(value) do
-      true  ->
-        "#{value}"
-        |> String.split(",")
-        |> Enum.map(&String.strip/1)
-        |> Enum.map(&(parse_datatype(list_type, &1, setting)))
-      false ->
-        Enum.map(value, &(parse_datatype(list_type, &1, setting)))
+      true -> str_to_conform_list(list_type, value, setting)
+      false -> Enum.map(value, &(parse_datatype(list_type, &1, setting)))
     end
+  end
+  defp parse_datatype([list: list_type], value, setting) do
+    Enum.map(value, &(parse_datatype(list_type, &1, setting)))
   end
   defp parse_datatype({:atom, type}, {k, v}, setting) do
     {k, parse_datatype(type, v, setting)}
@@ -523,5 +521,12 @@ defmodule Conform.Translate do
           false -> {false, mod, args}
         end
     end
+  end
+
+  defp str_to_conform_list(list_type, value, setting) do
+        "#{value}"
+        |> String.split(",")
+        |> Enum.map(&String.strip/1)
+        |> Enum.map(&(parse_datatype(list_type, &1, setting)))
   end
 end
