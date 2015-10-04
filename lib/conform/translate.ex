@@ -91,17 +91,18 @@ defmodule Conform.Translate do
             parsed_value =
               try do
                 case parse_datatype(datatype, value, key) do
-                  nil -> value
-                  val -> val
+                  nil ->
+                    value
+                  val ->
+                    val
                 end
-              rescue ArgumentError ->
+              rescue _ ->
                   value
               end
             # Break the schema key name into it's parts, [app, [key1, key2, ...]]
             [app_name|setting_path] = Keyword.get(mapping, :to, key |> Atom.to_string)
                                       |> String.split(".")
                                       |> Enum.map(&String.to_atom/1)
-
             # Get the translation function is_function one is defined
             translated_value = case get_in(translations, [key]) do
               fun when is_function(fun) ->
@@ -423,6 +424,9 @@ defmodule Conform.Translate do
       {num, _} -> num
       :error   -> raise TranslateError, message: "Invalid float value for #{setting}."
     end
+  end
+  defp parse_datatype(:ip, {address, port}, setting) do
+    {address, to_string(port)}
   end
   defp parse_datatype(:ip, value, setting) do
     case "#{value}" |> String.split(":", trim: true) do
