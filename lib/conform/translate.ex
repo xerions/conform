@@ -149,8 +149,8 @@ defmodule Conform.Translate do
                 update_in!(records, [app_name|setting_path |> repath], translated_value)
             end
             result
-            |> Stream.map(fn {key, value} -> {key, Enum.sort_by(value, fn {k,_} -> k end)} end)
-            |> Enum.sort_by(fn {key, _} -> key end)
+            |> Stream.map(fn {key, value} -> {key, Enum.sort_by(value, fn k -> elem(k, 0) end)} end)
+            |> Enum.sort_by(fn k -> elem(k, 0) end)
         end)
 
         # One last pass to catch any config settings not present in the schema, but
@@ -170,7 +170,7 @@ defmodule Conform.Translate do
           end)
           |> Enum.map(fn
             {key, value} when is_list(value) ->
-              {key, Enum.sort_by(value, fn {k, _} -> k end)}
+              {key, Enum.sort_by(value, fn k -> elem(k, 0) end)}
             x ->
               x
           end)
@@ -243,7 +243,7 @@ defmodule Conform.Translate do
     [app_name, path]  = Keyword.get(map, :to) |> String.split(".") |> Enum.map(&String.to_atom/1)
     built = build_complex(mapping, translations, data, from_key, to_key)
             |> List.flatten
-            |> Enum.sort_by(fn {k, _} -> k end)
+            |> Enum.sort_by(fn k -> elem(k, 0) end)
     result = case result do
       [] -> update_in!([], [app_name, path], built)
       _  -> update_in!(result, [app_name, path], built)
