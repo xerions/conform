@@ -155,34 +155,37 @@ defmodule Conform.Translate do
 
         # One last pass to catch any config settings not present in the schema, but
         # which should still be present in the merged configuration
-        merged = config |> Enum.reduce(settings, fn {app, app_config}, acc ->
-          # Ensure this app is present in the merged config
-          acc = case Keyword.has_key?(acc, app) do
-            true  -> acc
-            false -> put_in(acc, [app], [])
-          end
-          # Add missing settings to merged config from config.exs
-          app_config |> Enum.reduce(acc, fn {key, value}, acc ->
-            case get_in(acc, [app, key]) do
-              nil -> put_in(acc, [app, key], value)
-              _   -> acc
-            end
-          end)
-          |> Enum.map(fn
-            {key, value} when is_list(value) ->
-              {key, Enum.sort_by(value, fn k -> elem(k, 0) end)}
-            x ->
-              x
-          end)
-        end)
+        merge_configs(config, settings)
+       _ ->
+         raise Conform.Schema.SchemaError
+     end
+  end
 
+  def merge_configs(config, settings) do
+    Enum.reduce(config, settings, fn {app, app_config}, acc ->
+      # Ensure this app is present in the merged config
+      put_in(acc[to_atom(app)], merge_values(app_config, settings[app]))
+    end)
+  end
 
-        # Convert config map to Erlang config terms
-        merged |> settings_to_config
-      _ ->
-        raise Conform.Schema.SchemaError
+  defp merge_values(value1, value2) do
+    case {may_map2list(value1), may_map2list(value2)} do
+      # In a case, nothing exists in old configuration, we should use original value
+      {value1, nil} ->
+        value1
+      {[{key, _} | _] = value1, _ = value2} when is_atom(key) ->
+        merge_configs(value1, value2) |> Enum.sort_by(fn k -> elem(k, 0) end)
+      {_ = value1, [{key, _}] = value2} when is_atom(key) or is_binary(key) ->
+        merge_configs(value1, value2) |> Enum.sort_by(fn k -> elem(k, 0) end)
+      {_, value2} ->
+        value2
     end
   end
+
+  defp may_map2list(map) when is_map(map), do: Enum.into(map, [])
+  defp may_map2list(other), do: other
+
+  defp to_atom(key), do: (unless is_atom(key) do String.to_atom(key) else key end)
 
   defp get_complex(mappings, translations, normalized_conf) do
     complex       = get_complex([], mappings)
@@ -389,13 +392,6 @@ defmodule Conform.Translate do
 
   # Add a .conf-style comment to the given line
   defp add_comment(line), do: "# #{line}"
-
-  # Convert config map to Erlang config terms
-  # End result: [{:app, [{:key1, val1}, {:key2, val2}, ...]}]
-  defp settings_to_config(map) when is_map(map),            do: Enum.map(map, &settings_to_config/1)
-  defp settings_to_config({key, value}) when is_map(value), do: {String.to_atom(key), settings_to_config(value)}
-  defp settings_to_config({key, value}),                    do: {String.to_atom(key), value}
-  defp settings_to_config(value),                           do: value
 
   # Parse the provided value as a value of the given datatype
   defp parse_datatype(:atom, value, _setting),     do: "#{value}" |> String.to_atom
