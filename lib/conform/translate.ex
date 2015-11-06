@@ -512,9 +512,9 @@ defmodule Conform.Translate do
       [{mod, args}]         -> {mod, args}
       mod                   -> {mod, nil}
     end
-    case Code.ensure_loaded(mod) do
-      {:error, :nofile} -> {false, mod, args}
-      {:module, mod}    ->
+    case Code.ensure_loaded?(mod) do
+      false -> {false, mod, args}
+      _    ->
         behaviours = get_in(mod.module_info, [:attributes, :behaviour]) || []
         case Enum.member?(behaviours, Conform.Type) do
           true  -> {true, mod, args}
