@@ -137,7 +137,14 @@ parse(Input) when is_binary(Input) ->
         Bin ->
             Len      = erlang:byte_size(Bin),
             Unquoted = erlang:binary_part(Bin, {1, Len - 2}),
-            binary_to_list(Unquoted)
+	    case Bin of
+	        <<"\"\"">> ->
+		    <<>>;
+	        <<"\'\'">> ->
+		    "";
+                _ ->
+                    binary_to_list(Unquoted)
+            end
     end
  end).
 
