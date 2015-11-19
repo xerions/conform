@@ -4,8 +4,6 @@ defmodule Conform.Translate do
   from .schema.exs -> .conf
   """
 
-  @list_types [:list, :enum, :complex]
-
   @doc """
   This exception reflects an issue with the translation process
   """
@@ -18,14 +16,14 @@ defmodule Conform.Translate do
   """
   @spec to_conf([{atom, term}]) :: binary
   def to_conf(schema) do
-    schema = Keyword.delete(schema, :import)
     case schema do
       [mappings: mappings, translations: _] ->
         Enum.reduce mappings, "", fn {key, info}, result ->
           # If the datatype of this mapping is an enum,
           # write out the allowed values
-          datatype             = Keyword.get(info, :datatype, :binary)
-          doc                  = Keyword.get(info, :doc, "")
+          default = Keyword.get(info, :default)
+          datatype = Keyword.get(info, :datatype, :binary)
+          doc = Keyword.get(info, :doc, "")
           {custom?, mod, args} = is_custom_type?(datatype)
           comments = cond do
             custom? ->
@@ -34,8 +32,7 @@ defmodule Conform.Translate do
                 {"", doc}    -> to_comment(doc)
                 {doc, extra} -> to_comment("#{doc}\n#{extra}")
               end
-            true ->
-              to_comment(doc)
+            true -> to_comment(doc)
           end
           result = case datatype do
             [enum: values] ->
@@ -44,12 +41,9 @@ defmodule Conform.Translate do
             _ ->
               <<result::binary, comments::binary, ?\n>>
           end
-          default = Keyword.get(info, :default)
           case default do
-            nil ->
-              <<result::binary, "# #{key} = \n\n">>
-            default ->
-              <<result::binary, "#{key} = #{write_datatype(datatype, default, key)}\n\n">>
+            nil -> <<result::binary, "# #{key} = \n\n">>
+            default -> <<result::binary, "#{key} = #{write_datatype(datatype, default, key)}\n\n">>
           end
         end
       _ ->
@@ -62,16 +56,8 @@ defmodule Conform.Translate do
   """
   @spec to_config([{term, term}] | [], [{term, term}] | [], [{term, term}]) :: term
   def to_config(config, conf, schema) do
-    # Convert the .conf into a map of key names to values
-    normalized_conf =
-      for {setting, value} <- conf, into: %{} do
-        key = setting
-              |> Enum.map(&List.to_string/1)
-              |> Enum.join(".")
-              |> String.to_atom
-        {key, value}
-    end
-    schema = Keyword.delete(schema, :import)
+    # Convert the .conf into a list of key names to values
+    normalized_conf = for {setting, value} <- conf do {setting |> Enum.join(".") |> String.to_atom, value} end
     case schema do
       [mappings: mappings, translations: translations] ->
         # get complex data types
@@ -91,14 +77,10 @@ defmodule Conform.Translate do
             parsed_value =
               try do
                 case parse_datatype(datatype, value, key) do
-                  nil ->
-                    value
-                  val ->
-                    val
+                  nil -> value
+                  val -> val
                 end
-              rescue _ ->
-                  value
-              end
+              rescue _ -> value end
             # Break the schema key name into it's parts, [app, [key1, key2, ...]]
             [app_name|setting_path] = Keyword.get(mapping, :to, key |> Atom.to_string)
                                       |> String.split(".")
@@ -121,10 +103,8 @@ defmodule Conform.Translate do
                 # in the schema, maybe we are dealing with a custom
                 # type.
                 case is_custom_type?(datatype) do
-                  {true, mod, _args} ->
-                    translate_custom_type(mod, mapping, key, normalized_conf, parsed_value, result, app_name, setting_path)
-                  _ ->
-                    parsed_value
+                  {true, mod, _args} -> translate_custom_type(mod, mapping, key, normalized_conf, parsed_value, result, app_name, setting_path)
+                  _ -> parsed_value
                 end
             end
 
@@ -140,21 +120,14 @@ defmodule Conform.Translate do
                   []
               end
             end) |> List.flatten
-
-            result = update_in!(result, [app_name|setting_path |> repath], translated_value)
-            result = case res do
-              [] ->
-                result
-              records ->
-                update_in!(records, [app_name|setting_path |> repath], translated_value)
+            case res do
+              [] -> update_in!(result, [app_name|setting_path |> repath], translated_value)
+              records -> update_in!(records, [app_name|setting_path |> repath], translated_value)
             end
-            result
-            |> Stream.map(fn {key, value} -> {key, Enum.sort_by(value, fn k -> elem(k, 0) end)} end)
-            |> Enum.sort_by(fn k -> elem(k, 0) end)
-        end)
-
+        end) |> Enum.reverse
         # One last pass to catch any config settings not present in the schema, but
         # which should still be present in the merged configuration
+        settings = Enum.map(settings, fn({key, setting}) -> {key, Enum.reverse(setting)} end) |> Enum.reverse
         merge_configs(config, settings)
        _ ->
          raise Conform.Schema.SchemaError
@@ -174,24 +147,18 @@ defmodule Conform.Translate do
       {value1, nil} ->
         value1
       {[{key, _} | _] = value1, _ = value2} when is_atom(key) ->
-        merge_configs(value1, value2) |> Enum.sort_by(fn k -> elem(k, 0) end)
+        merge_configs(value1, value2)
       {_ = value1, [{key, _}] = value2} when is_atom(key) or is_binary(key) ->
-        merge_configs(value1, value2) |> Enum.sort_by(fn k -> elem(k, 0) end)
+        merge_configs(value1, value2)
       {_, value2} ->
         value2
     end
   end
 
-  defp may_map2list(map) when is_map(map), do: Enum.into(map, [])
-  defp may_map2list(other), do: other
-
-  defp to_atom(key), do: (unless is_atom(key) do String.to_atom(key) else key end)
-
   defp get_complex(mappings, translations, normalized_conf) do
     complex       = get_complex([], mappings)
     mappings      = delete_complex([], mappings) |> :lists.reverse
     complex_names = get_complex_names([], complex, normalized_conf)
-
     complex = Enum.reduce(complex, [], fn {map_key, mapping}, result ->
       data = Enum.map(complex_names, fn {complex_data_type, complex_type_name} ->
         {_, p} = Regex.compile(map_key |> Atom.to_string)
@@ -220,7 +187,6 @@ defmodule Conform.Translate do
                                    |> String.to_atom
                    datatype      = Keyword.get(complex_mappings, :datatype, :binary)
                    default_value = Keyword.get(complex_mappings, :default, nil)
-
                    case get_in_complex(complex_type_name, normalized_conf, [complex_key]) do
                      []         -> {field, default_value}
                      conf_value ->
@@ -233,20 +199,19 @@ defmodule Conform.Translate do
               end
           end
       end) |> List.flatten
-
       update_complex_acc(mapping, result, translations, data)
     end)
-
-    {mappings, complex}
+    case complex do
+      [{app, complex_data}] -> {mappings, [{app, Enum.reverse(complex_data)}]}
+      _ -> {mappings, complex}
+    end
   end
 
   defp update_complex_acc([], result, _, _), do: result
   defp update_complex_acc([{from_key, map} | mapping], result, translations, data) do
     to_key            = String.to_atom(Keyword.get(map, :to) <> ".*")
     [app_name, path]  = Keyword.get(map, :to) |> String.split(".") |> Enum.map(&String.to_atom/1)
-    built = build_complex(mapping, translations, data, from_key, to_key)
-            |> List.flatten
-            |> Enum.sort_by(fn k -> elem(k, 0) end)
+    built = build_complex(mapping, translations, data, from_key, to_key) |> List.flatten
     result = case result do
       [] -> update_in!([], [app_name, path], built)
       _  -> update_in!(result, [app_name, path], built)
@@ -265,13 +230,11 @@ defmodule Conform.Translate do
   defp get_complex(complex, []), do: complex
   defp get_complex(complex, [{key, _} = mapping | mappings]) do
     case Regex.run(~r/\.\*/, to_string(key)) do
-      nil ->
-        get_complex(complex, mappings)
+      nil -> get_complex(complex, mappings)
       _ ->
         mappings       = List.keydelete(mappings, key, 0)
         [pattern | _]  = String.split(to_string(key), ".")
         pattern_length = byte_size(pattern)
-
         result = Enum.filter(mappings,
           fn {k, _}  ->
             case :re.run(Atom.to_string(k), to_string(key)) do
@@ -314,7 +277,7 @@ defmodule Conform.Translate do
     end
   end
 
-  defp get_complex_names(result, [], _), do: result |> :lists.usort
+  defp get_complex_names(result, [], _), do: result |> Enum.uniq
   defp get_complex_names(result, [{pattern, _} | complex], normalized_conf) do
     res = Enum.map(normalized_conf, fn {complex_key, _} ->
       {_, regexp} = Regex.compile(Atom.to_string(pattern))
@@ -323,17 +286,12 @@ defmodule Conform.Translate do
         _   -> get_name_under_wildcard(pattern, complex_key)
       end
     end)
-
     get_complex_names(List.flatten([res | result]), complex, normalized_conf)
   end
 
   defp get_name_under_wildcard(pattern, name) do
-    pattern = String.split(Atom.to_string(pattern), ".*")
-              |> List.first
-    result = String.split(Atom.to_string(name), pattern <> ".")
-             |> List.last
-             |> String.split(".")
-             |> List.first
+    pattern = String.split(Atom.to_string(pattern), ".*") |> List.first
+    result = String.split(Atom.to_string(name), pattern <> ".") |> List.last |> String.split(".") |> List.first
     {pattern, result}
   end
 
@@ -356,29 +314,20 @@ defmodule Conform.Translate do
 
   defp repath(setting_path) do
     uc_set   = Enum.map(?A..?Z, fn i -> <<i::utf8>> end) |> Enum.into(HashSet.new)
-    setting_path
-    |> Enum.map(&Atom.to_string/1)
-    |> repath(uc_set, [], [])
-    |> List.flatten
-    |> Enum.reverse
-    |> Enum.map(&String.to_atom/1)
+    setting_path |> Enum.map(&Atom.to_string/1) |> repath(uc_set, [], []) |> List.flatten |> Enum.reverse |> Enum.map(&String.to_atom/1)
   end
 
   defp repath([], _uc_set, [], total_acc),       do: total_acc
   defp repath([], _uc_set, this_acc, total_acc), do: [rev_join_key(this_acc)|total_acc]
   defp repath([next|tail], uc_set, this_acc, total_acc) do
     case Set.member?(uc_set, String.at(next, 0)) do
-      true ->
-        repath(tail, uc_set, [next|this_acc], total_acc)
-      false ->
-        repath(tail, uc_set, [], [next|[rev_join_key(this_acc)|total_acc]])
+      true -> repath(tail, uc_set, [next|this_acc], total_acc)
+      false -> repath(tail, uc_set, [], [next|[rev_join_key(this_acc)|total_acc]])
     end
   end
 
   defp rev_join_key([]), do: []
-  defp rev_join_key(key_frags) when is_list(key_frags) do
-    key_frags |> Enum.reverse |> Enum.join(".")
-  end
+  defp rev_join_key(key_frags) when is_list(key_frags), do: key_frags |> Enum.reverse |> Enum.join(".")
 
   defp update_in!(coll, key_path, value), do: update_in!(coll, key_path, value, [])
   defp update_in!(coll, [], value, path), do: put_in(coll, path, value)
@@ -386,12 +335,9 @@ defmodule Conform.Translate do
     path = acc ++ [key]
     case get_in(coll, path) do
       nil -> put_in(coll, path, []) |> update_in!(rest, value, path)
-      _   -> update_in!(coll, rest, value, path)
+      _ -> update_in!(coll, rest, value, path)
     end
   end
-
-  # Add a .conf-style comment to the given line
-  defp add_comment(line), do: "# #{line}"
 
   # Parse the provided value as a value of the given datatype
   defp parse_datatype(:atom, value, _setting),     do: "#{value}" |> String.to_atom
@@ -402,11 +348,11 @@ defmodule Conform.Translate do
       case "#{value}" |> String.to_existing_atom do
         true  -> true
         false -> false
-        _     -> raise TranslateError, messagae: "Invalid boolean value for #{setting}."
+        _     ->
+          raise TranslateError, message: "Invalid boolean value for #{setting}."
       end
-    rescue
-      ArgumentError ->
-        raise TranslateError, messagae: "Invalid boolean value for #{setting}."
+    rescue _ ->
+        raise TranslateError, message: "Invalid boolean value for #{setting}."
     end
   end
   defp parse_datatype(:integer, value, setting) do
@@ -421,7 +367,7 @@ defmodule Conform.Translate do
       :error   -> raise TranslateError, message: "Invalid float value for #{setting}."
     end
   end
-  defp parse_datatype(:ip, {address, port}, setting) do
+  defp parse_datatype(:ip, {address, port}, _setting) do
     {address, to_string(port)}
   end
   defp parse_datatype(:ip, value, setting) do
@@ -438,7 +384,7 @@ defmodule Conform.Translate do
       raise TranslateErorr, message: "Invalid enum value for #{setting}."
     end
   end
-  defp parse_datatype([list: :ip], value, setting), do: str_to_conform_list(:ip, value, setting)
+  defp parse_datatype([list: :ip], value, setting) when is_binary(value), do: str_to_conform_list(:ip, value, setting)
   defp parse_datatype([list: list_type], value, setting)  when is_binary(value) do
     str_to_conform_list(list_type, value, setting)
   end
@@ -447,9 +393,6 @@ defmodule Conform.Translate do
       true -> str_to_conform_list(list_type, value, setting)
       false -> Enum.map(value, &(parse_datatype(list_type, &1, setting)))
     end
-  end
-  defp parse_datatype([list: list_type], value, setting) do
-    Enum.map(value, &(parse_datatype(list_type, &1, setting)))
   end
   defp parse_datatype({:atom, type}, {k, v}, setting) do
     {k, parse_datatype(type, v, setting)}
@@ -486,6 +429,7 @@ defmodule Conform.Translate do
   end
   defp write_datatype(_datatype, value, _setting), do: "#{value}"
 
+  defp add_comment(line), do: "# #{line}"
   defp to_comment(str) do
     String.split(str, "\n", trim: true) |> Enum.map(&add_comment/1) |> Enum.join("\n")
   end
@@ -524,9 +468,20 @@ defmodule Conform.Translate do
   end
 
   defp str_to_conform_list(list_type, value, setting) do
-        "#{value}"
-        |> String.split(",")
-        |> Enum.map(&String.strip/1)
-        |> Enum.map(&(parse_datatype(list_type, &1, setting)))
+        "#{value}" |> String.split(",") |> Enum.map(&String.strip/1) |> Enum.map(&(parse_datatype(list_type, &1, setting)))
   end
+
+  defp may_map2list(map) when is_map(map), do: Enum.into(map, [])
+  defp may_map2list(other), do: other
+  defp to_atom(key), do: (unless is_atom(key) do String.to_atom(key) else key end)
 end
+
+#Eshell V6.4  (abort with ^G)
+#1> Map = #{"b0" => 1}.
+##{"b0" => 1}
+#2> maps:put("a0", => 2}.
+#* 1: syntax error before: '=>'
+#2> maps:put("a0", 42, Map}.
+#* 1: syntax error before: '}'
+#2> maps:put("a0", 42, Map).
+#{"a0" => 42,"b0" => 1}
