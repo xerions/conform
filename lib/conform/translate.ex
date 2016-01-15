@@ -510,6 +510,7 @@ defmodule Conform.Translate do
   defp is_custom_type?(datatype) do
     {mod, args} = case datatype do
       [{mod, args}]         -> {mod, args}
+      [mod]                 -> {mod, nil}
       mod                   -> {mod, nil}
     end
     case Code.ensure_loaded?(mod) do
