@@ -118,7 +118,8 @@ defmodule Conform.Schema do
   """
   @spec coalesce([schema]) :: schema
   def coalesce(schemas) do
-    schemas |> Enum.reduce(empty, &merge/2)
+    {schema, _bindings} = (schemas |> Enum.reduce(empty, &merge/2) |> Code.eval_quoted)
+    schema
   end
 
   @doc """

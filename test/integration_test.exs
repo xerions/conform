@@ -24,15 +24,37 @@ defmodule IntegrationTest do
   test "merging and stringifying master/dep schemas" do
     master = Path.join(["test", "schemas", "merge_master.schema.exs"]) |> Conform.Schema.read!
     dep    = Path.join(["test", "schemas", "merge_dep.schema.exs"]) |> Conform.Schema.read!
-    saved  = Path.join(["test", "schemas", "merged_schema.exs"])
 
     # Get schemas from all dependencies
     schema   = Conform.Schema.coalesce([dep, master])
-    contents = schema |> Conform.Schema.stringify
-    saved |> File.write!(contents)
-
-    expected = File.read!(saved)
-    assert expected == contents
+    merged_mappings = Keyword.get(schema, :mappings)
+    merged_translations = Keyword.get(schema, :translations)
+    master_mappings = Keyword.get(master, :mappings)
+    dep_mappings = Keyword.get(dep, :mappings)
+    master_translations = Keyword.get(master, :translations)
+    dep_translations = Keyword.get(dep, :translations)
+    # here we check that merged schemas contains all mappings and
+    # translations from the master and dep schemas
+    Enum.each(master_mappings, fn({mapping_name, mapping_data}) ->
+      assert true = Keyword.has_key?(merged_mappings, mapping_name)
+      merged_mapping_data = Keyword.get(merged_mappings, mapping_name)
+      assert mapping_data == merged_mapping_data
+    end)
+    Enum.each(dep_mappings, fn({mapping_name, mapping_data}) ->
+      assert true = Keyword.has_key?(merged_mappings, mapping_name)
+      merged_mapping_data = Keyword.get(merged_mappings, mapping_name)
+      assert mapping_data == merged_mapping_data
+    end)
+    Enum.each(master_translations, fn({translation_name, _fun_ast}) ->
+      assert true = Keyword.has_key?(merged_translations, translation_name)
+      fun = Keyword.get(merged_translations, translation_name)
+      assert true = is_function(fun)
+    end)
+    Enum.each(dep_translations, fn({translation_name, _fun_ast}) ->
+      assert true = Keyword.has_key?(merged_translations, translation_name)
+      fun = Keyword.get(merged_translations, translation_name)
+      assert true = is_function(fun)
+    end)
   end
 
   test "can accumulate values in transforms" do
