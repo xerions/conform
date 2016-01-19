@@ -47,13 +47,9 @@ defmodule IntegrationTest do
     end)
     Enum.each(master_translations, fn({translation_name, _fun_ast}) ->
       assert true = Keyword.has_key?(merged_translations, translation_name)
-      fun = Keyword.get(merged_translations, translation_name)
-      assert true = is_function(fun)
     end)
     Enum.each(dep_translations, fn({translation_name, _fun_ast}) ->
       assert true = Keyword.has_key?(merged_translations, translation_name)
-      fun = Keyword.get(merged_translations, translation_name)
-      assert true = is_function(fun)
     end)
   end
 

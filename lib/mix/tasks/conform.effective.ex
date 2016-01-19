@@ -83,7 +83,7 @@ defmodule Mix.Tasks.Conform.Effective do
     end
     # Load merged schemas
     app_schema = Conform.Schema.schema_path(app) |> Conform.Schema.load!
-    schema = Conform.Schema.coalesce |> Conform.Schema.merge(app_schema) |> Dict.delete(:import)
+    schema = Conform.Schema.coalesce |> Code.eval_quoted |> elem(0) |> Conform.Schema.merge(app_schema) |> Dict.delete(:import)
     # Translate .conf -> config, using settings from config if one is
     # not provided in the .conf. If no setting is present in either
     # the config, or the .conf, the default from the schema is used.
