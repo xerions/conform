@@ -24,31 +24,7 @@ defmodule ConformCodeTest do
       end]]
     """
     stringified = """
-    [
-      transforms: [
-        single_clause: fn val ->
-          case val do
-            :foo ->
-              bar = String.to_atom("bar")
-              bar
-            :baz ->
-              :qux
-          end
-        end,
-        multi_clause: fn
-          :foo ->
-            bar
-          val ->
-            case val do
-              :baz ->
-                :qux
-              _ ->
-                result = val |> String.to_atom()
-                result
-            end
-        end
-      ]
-    ]
+    [transforms: [single_clause: fn val -> case(val) do\n  :foo ->\n    bar = String.to_atom(\"bar\")\n    bar\n  :baz ->\n    :qux\nend end, multi_clause: fn\n  :foo ->\n    bar\n  val ->\n    case(val) do\n      :baz ->\n        :qux\n      _ ->\n        result = val |> String.to_atom()\n        result\n    end\nend]]
     """ |> String.strip(?\n)
 
     {:ok, quoted} = source |> Code.string_to_quoted
@@ -66,13 +42,11 @@ defmodule ConformCodeTest do
     Just testing "nested quotes"
     """
     multi_expected = """
-    \"\"\"
-    Determine the type of thing.
-    * active: it's going to be active
-    * passive: it's going to be passive
-    * active-debug: it's going to be active, with verbose debugging information
-    Just testing "nested quotes"
-    \"\"\"
+    \"Determine the type of thing.\\n* active: it's going to be active\
+\\n* passive: it's going to be passive\
+\\n* active-debug: it's going to be active, with verbose debugging information\
+\\nJust testing \\"nested quotes\\"\
+\\n\"
     """ |> String.strip(?\n)
 
     {:ok, singleline_quoted} = singleline |> Macro.to_string |> Code.string_to_quoted
@@ -97,25 +71,7 @@ defmodule ConformCodeTest do
     """
 
     expected = """
-    [
-      "myapp.another_val": [
-        to: "myapp.another_val",
-        datatype: [
-          enum: [
-            :active,
-            :passive,
-            :"active-debug"
-          ]
-        ],
-        default: %{test: :foo},
-        doc: \"\"\"
-        Determine the type of thing.
-        * active: it's going to be active
-        * passive: it's going to be passive
-        * active-debug: it's going to be active, with verbose debugging information
-        \"\"\"
-      ]
-    ]
+    ["myapp.another_val": [to: "myapp.another_val", datatype: [enum: [:active, :passive, :"active-debug"]], default: %{test: :foo}, doc: "Determine the type of thing.\\n* active: it's going to be active\\n* passive: it's going to be passive\\n* active-debug: it's going to be active, with verbose debugging information\\n\"]]
     """ |> String.strip(?\n)
 
     {:ok, quoted} = data |> Code.string_to_quoted
@@ -151,38 +107,7 @@ defmodule ConformCodeTest do
     """
 
     expected = """
-    [
-      translations: [
-        "myapp.another_val": fn
-          :foo ->
-            :bar
-          val ->
-            case val do
-              :active ->
-                data = %{log: :warn}
-                more_data = %{data | log: :warn}
-                {:on, [data: data]}
-              :"active-debug" ->
-                {:on, [debug: true]}
-              :passive ->
-                {:off, []}
-              _ ->
-                {:on, []}
-            end
-        end,
-        "myapp.some_val": fn
-          :foo ->
-            :bar
-          val ->
-            case val do
-              :foo ->
-                :bar
-              _ ->
-                val
-            end
-        end
-      ]
-    ]
+    [translations: [\"myapp.another_val\": fn\n  :foo ->\n    :bar\n  val ->\n    case(val) do\n      :active ->\n        data = %{log: :warn}\n        more_data = %{data | log: :warn}\n        {:on, [data: data]}\n      :\"active-debug\" ->\n        {:on, [debug: true]}\n      :passive ->\n        {:off, []}\n      _ ->\n        {:on, []}\n    end\nend, \"myapp.some_val\": fn\n  :foo ->\n    :bar\n  val ->\n    case(val) do\n      :foo ->\n        :bar\n      _ ->\n        val\n    end\nend]]
     """ |> String.strip(?\n)
 
     {:ok, quoted} = data |> Code.string_to_quoted
