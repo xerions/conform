@@ -163,8 +163,12 @@ defmodule Conform.Translate do
 
   def merge_configs(config, settings) do
     Enum.reduce(config, settings, fn {app, app_config}, acc ->
+      setting = case is_atom(app) do
+                  true -> settings[app]
+                  _ -> nil
+                end
       # Ensure this app is present in the merged config
-      put_in(acc[to_atom(app)], merge_values(app_config, settings[app]))
+      put_in(acc[to_atom(app)], merge_values(app_config, setting))
     end)
   end
 
