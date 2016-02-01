@@ -295,10 +295,16 @@ defmodule Conform.Translate do
   defp get_in_complex(name, normalized_conf, [key]) do
     res = Enum.filter(normalized_conf,
       fn {complex_key, _} ->
+        # try to find complex field in the *.conf with a certain key
         {_, pattern} = key |> Atom.to_string |> String.replace(".*.", "\\.[\\w]+\\.") |> Regex.compile
         case Regex.run(pattern, Atom.to_string(complex_key)) do
           nil -> false
-          _   -> true
+          _   ->
+            # We found a complex field in the *.conf which satisfies to key pattern
+            # but it may be not accurate, so let's try to check it
+            actual_pattern = String.split(Atom.to_string(key), ".*.") |> List.last
+            {:ok, pattern} = Regex.compile("^.*#{actual_pattern}$")
+            Regex.match?(pattern, Atom.to_string(complex_key))
         end
       end)
 
