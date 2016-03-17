@@ -81,6 +81,10 @@ defmodule Mix.Tasks.Conform.Effective do
             exit(:normal)
         end
     end
+    # Add ebeam(s) to the project path to be able to call function in translations during conform.effective
+    {:ok, cwd} = File.cwd
+    project_build_path = Path.join([cwd, "_build", to_string(Mix.env), "lib", Path.basename(cwd), "ebin"])
+    Code.append_path(project_build_path)
     # Load merged schemas
     app_schema = Conform.Schema.schema_path(app) |> Conform.Schema.load!
     schema = Conform.Schema.coalesce |> Code.eval_quoted |> elem(0) |> Conform.Schema.merge(app_schema) |> Dict.delete(:import)
