@@ -46,12 +46,6 @@
       datatype: :integer,
       default: 30
     ],
-    # dynamic keyword list
-    "sublist_example.*": [
-      to: "my_app.sublist",
-      datatype: :binary,
-      default: []
-    ],
     # just a val
     "some_val": [
       doc:      "Just some atom.",
@@ -59,15 +53,19 @@
       datatype: :atom,
       default:  :foo
     ],
-
     "some_val2": [
       doc:      "Just some float.",
       to:       "my_app.some_val2",
       datatype: :float,
       default:  2.5
+    ],
+    "some_bool_val": [
+      doc:      "Just some bool.",
+      to:       "my_app.some_bool_val",
+      datatype: :boolean,
+      default:  true
     ]
   ],
-
   translations: [
     "my_app.complex_list.*": fn _, {key, value_map}, acc ->
       [{key, %{
@@ -75,7 +73,6 @@
         age:  value_map[:age]
        }} | acc]
     end,
-
     "my_app.complex_another_list.*": fn _, {key, value_map}, acc ->
       [{key, %{
         id: value_map[:id],
@@ -83,10 +80,6 @@
         age: value_map[:age],
         dbid: value_map[:dbid]
        }} | acc]
-    end,
-
-    "my_app.sublist.*": fn _, {key, value_map}, acc ->
-      [{key, value_map[key]}|acc]
     end
   ]
 ]

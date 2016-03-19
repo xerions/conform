@@ -5,7 +5,7 @@ defmodule ConfTranslateTest do
   test "can generate default conf from schema" do
     path   = Path.join(["test", "schemas", "test.schema.exs"])
     schema = path |> Conform.Schema.load
-    conf   = schema |> Conform.Translate.to_conf
+    conf   = Keyword.delete(schema, :import) |> Conform.Translate.to_conf
     expected = """
     # The location of the error log. Should be a full path, i.e. /var/log/error.log.
     log.error.file = "/var/log/error.log"
@@ -68,9 +68,7 @@ defmodule ConfTranslateTest do
           Mix.Task.run("compile")
           Mix.Task.run("conform.archive", [schema_path])
         end)
-
-      expected = [{:test, [{:another_val,2}, {:debug_level,:info}, {:env, :prod}]}]
-
+      expected = [{:test, [{:env, :prod}, {:another_val, 2}, {:debug_level, :info}]}]
       :ok = Mix.Task.run("escript.build", [path: script])
       _ = :os.cmd("#{script} --schema #{schema_path} --conf #{conf_path} --output-dir #{sys_config_path}" |> to_char_list)
       {:ok, [sysconfig]} = :file.consult(sys_config_path <> "/sys.config")
@@ -86,24 +84,18 @@ defmodule ConfTranslateTest do
     schema = path |> Conform.Schema.load
     conf   = schema |> Conform.Translate.to_conf
     parsed = Conform.Parse.parse!(conf)
-    config = Conform.Translate.to_config([], parsed, schema)
-    expect = [
-      log: [
-        console_file: "/var/log/console.log",
-        error_file:   "/var/log/error.log",
-        syslog: :on
-      ],
-      logger: [format: "$time $metadata[$level] $levelpad$message\n"],
-      myapp: [
-        {:'Custom.Enum', :dev},
-        {Some.Module, [val: :foo]},
-        another_val: {:on, [data: %{log: :warn}]},
-        db: [hosts: [{"127.0.0.1", "8001"}]],
-        some_val: :bar
-      ],
-      sasl:  [errlog_type: :all]
-    ]
-    assert Keyword.equal?(expect, config)
+    config = Conform.Translate.to_config([], parsed, Keyword.delete(schema, :import))
+    expect = [{:myapp,[{:db,[{:hosts,[{"127.0.0.1", "8001"}]}]},
+               {:some_val, :bar},
+               {:another_val, {:on, [{:data, %{log: :warn}}]}},
+               {Some.Module, [{:val,:foo}]},
+               {:'Custom.Enum',:dev}]},
+       {:logger,[{:format, "$time $metadata[$level] $levelpad$message\n"}]},
+       {:sasl,[{:errlog_type,:all}]},
+       {:log,[{:error_file,"/var/log/error.log"},
+             {:console_file,"/var/log/console.log"},
+             {:syslog,:on}]}]
+    assert expect == config
   end
 
   test "can generate config as Elixir terms from existing config, .conf and schema" do
@@ -124,23 +116,17 @@ defmodule ConfTranslateTest do
     """
     parsed = Conform.Parse.parse!(conf)
     config = Conform.Translate.to_config(config, parsed, schema)
-    expect = [
-      log: [
-        console_file: "/var/log/console.log",
-        error_file:   "/var/log/error.log",
-        syslog: :on
-      ],
-      logger: [format: "$time $metadata[$level] $levelpad$message\n"],
-      myapp: [
-        {:'Custom.Enum', :dev},
-        {Some.Module, [val: :foo]},
-        another_val: {:on, [data: %{log: :warn}]},
-        db: [hosts: [{"127.0.0.1", "8001"}]],
-        some_val: :bar,
-      ],
-      sasl:  [errlog_type: :progress]
-    ]
-    assert Keyword.equal?(expect, config)
+    expect = [{:myapp,[{:db,[{:hosts,[{"127.0.0.1","8001"}]}]},
+                       {:some_val,:bar},
+                       {:another_val,{:on,[{:data,%{log: :warn}}]}},
+                       {Some.Module,[{:val,:foo}]},
+                       {:'Custom.Enum',:dev}]},
+              {:logger,[{:format,"$time $metadata[$level] $levelpad$message\n"}]},
+              {:sasl, [{:errlog_type,:progress}]},
+              {:log, [{:error_file,"/var/log/error.log"},
+                      {:console_file,"/var/log/console.log"},
+                      {:syslog,:on}]}]
+    assert expect == config
   end
 
   test "can write config to disk as Erlang terms in valid app/sys.config format" do
@@ -148,8 +134,7 @@ defmodule ConfTranslateTest do
     schema = path |> Conform.Schema.load
     conf   = schema |> Conform.Translate.to_conf
     parsed = Conform.Parse.parse!(conf)
-    config = Conform.Translate.to_config([], parsed, schema)
-
+    config = Conform.Translate.to_config([], parsed, Keyword.delete(schema, :import))
     config_path = Path.join(System.tmp_dir!, "conform_test.config")
     :ok    = config_path |> Conform.Config.write(config)
     result = config_path |> String.to_char_list |> :file.consult
@@ -161,7 +146,7 @@ defmodule ConfTranslateTest do
     path   = Path.join(["test", "configs", "nested_list.exs"])
     config = path |> Mix.Config.read! |> Macro.escape
     schema = Conform.Schema.from_config(config)
-    conf   = Conform.Translate.to_conf(schema)
+    conf   = Conform.Translate.to_conf(Keyword.delete(schema, :import))
     expected = """
     # Provide documentation for my_app.sublist here.
     my_app.sublist = [opt1 = \"val1\", opt2 = \"val4\"], [opt1 = \"val3\", opt2 = \"val4\"]

@@ -138,7 +138,6 @@ defmodule Conform do
               []
           end
         end) |> :lists.flatten
-
         Enum.each(apps, fn(app) ->
           Code.append_path(to_string(arch_path) <> "/" <> app <> "/ebin")
         end)

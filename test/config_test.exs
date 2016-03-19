@@ -23,7 +23,7 @@ defmodule ConfigTest do
     config = path |> Mix.Config.read! |> Macro.escape
     schema = Conform.Schema.from_config(config)
     conf   = Path.join(["test", "confs", "nested_list.conf"]) |> Conform.Parse.file!
-    sysconfig = Conform.Translate.to_config(config, conf, schema)
+    sysconfig = Conform.Translate.to_config(config, conf, Keyword.delete(schema, :import))
     assert [my_app: [sublist: [[opt1: "val1", opt2: "val two"], [opt1: "val3", opt2: "val-4"]]]] = sysconfig
   end
 end
