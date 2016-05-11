@@ -75,14 +75,18 @@ defmodule IntegrationTest do
     conf   = Path.join(["test", "confs", "complex_example.conf"]) |> Conform.Parse.file!
     schema = Path.join(["test", "schemas", "complex_schema.exs"]) |> Conform.Schema.load
     effective = Conform.Translate.to_config([], conf, schema)
-    expected = [my_app:
-                [complex_another_list:
-                 [first: %{id: 100, dbid: 1, age: 20, username: "test_username1"},
-                  second: %{id: 101, dbid: 1, age: 40, username: "test_username2"}],
-                 complex_list: [
-                   buzz: %{age: 25, type: :person}, fido: %{age: 30, type: :dog}],
-                 some_val: :foo, some_val2: 2.5,
-                 sublist: ["opt-2": "val2", opt1: "val1"]]]
+    expected = [my_app: [
+                  a: [deep: [list: [
+                    first:  %{id: 100, username: "test_deep_username1"},
+                    second: %{id: 200, username: "test_deep_username2"}]]],
+                  complex_another_list: [
+                    first:  %{id: 100, dbid: 1, age: 20, username: "test_username1"},
+                    second: %{id: 101, dbid: 1, age: 40, username: "test_username2"}],
+                  complex_list: [
+                    buzz: %{age: 25, type: :person},
+                    fido: %{age: 30, type: :dog}],
+                  some_val: :foo, some_val2: 2.5,
+                  sublist: ["opt-2": "val2", opt1: "val1"]]]
 
     assert effective == expected
   end

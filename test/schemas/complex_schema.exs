@@ -46,6 +46,24 @@
       datatype: :integer,
       default: 30
     ],
+    #
+    # deep complex
+    #
+    "complex.a.deep.list.*": [
+      to: "my_app.a.deep.list",
+      datatype: [:complex],
+      default: []
+    ],
+    "complex.a.deep.list.*.id": [
+      to: "my_app.a.deep.list",
+      datatype: :integer,
+      default:  0
+    ],
+    "complex.a.deep.list.*.username": [
+      to: "my_app.a.deep.list",
+      datatype: :binary,
+      default: ""
+    ],
     # dynamic keyword list
     "sublist_example.*": [
       to: "my_app.sublist",
@@ -87,6 +105,14 @@
 
     "my_app.sublist.*": fn _, {key, value_map}, acc ->
       [{key, value_map[key]}|acc]
+    end,
+
+    "my_app.a.deep.list.*": fn _, {key, value_map}, acc ->
+      [{key, %{
+        id:       value_map[:id],
+        username: value_map[:username]
+       }} | acc]
     end
+
   ]
 ]

@@ -247,13 +247,13 @@ defmodule Conform.Translate do
   defp update_complex_acc([], result, _, _), do: result
   defp update_complex_acc([{from_key, map} | mapping], result, translations, data) do
     to_key            = String.to_atom(Keyword.get(map, :to) <> ".*")
-    [app_name, path]  = Keyword.get(map, :to) |> String.split(".") |> Enum.map(&String.to_atom/1)
+    [app_name| path]  = Keyword.get(map, :to) |> String.split(".") |> Enum.map(&String.to_atom/1)
     built = build_complex(mapping, translations, data, from_key, to_key)
             |> List.flatten
             |> Enum.sort_by(fn k -> elem(k, 0) end)
     result = case result do
-      [] -> update_in!([], [app_name, path], built)
-      _  -> update_in!(result, [app_name, path], built)
+      [] -> update_in!([], [app_name| path], built)
+      _  -> update_in!(result, [app_name| path], built)
     end
     update_complex_acc(mapping, result, translations, data)
   end
